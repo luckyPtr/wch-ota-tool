@@ -37,14 +37,15 @@ bool BLE::isSupportBle()
     return WCHBLEIsLowEnergySupported();
 }
 
-void BLE::scanDevice(int scanTime, QString filter = NULL)
+void BLE::scanDevice(int scanTime, QString filter)
 {
-    BLENameDevID devArray[128];
-    ULONG devNum;
+    BLENameDevID devArray[MAX_PATH];
+    ULONG devNum = 16;
     char* pChar = new char[filter.length() + 1];
     strcpy_s(pChar, filter.length() + 1, filter.toLocal8Bit().data());
-    WCHBLEEnumDevice(scanTime, pChar, devArray, &devNum);
-
+    memset(devArray, 0, sizeof(devArray));
+    WCHBLEEnumDevice(scanTime, NULL, devArray, &devNum);
+    qDebug() << "scaned" << devNum;
     bleDev.clear();
     for(ULONG i = 0; i < devNum; i++)
     {
@@ -58,22 +59,27 @@ void BLE::scanDevice(int scanTime, QString filter = NULL)
             dev.mac = match.captured(1);
         }
         bleDev << dev;
-
-        qDebug() << dev.rssi;
+    }
+    foreach(auto dev, bleDev)
+    {
+        qDebug() << QString("%1 %2 %3").arg(dev.name).arg(dev.devID).arg(dev.rssi);
     }
 }
 
 bool BLE::connectDevice(QString devID)
 {
-    WCHBLEHANDLE handle = 0;
+
     for(int i = 0; i < bleDev.size(); i++)
     {
-        QByteArray ba = devID.toLocal8Bit();
-        handle = WCHBLEOpenDevice(ba.data(), devConnChangedCallback);
-        bleDev[i].handle = handle;
-        break;
+        if (devID.compare(bleDev[i].devID) == 0)
+        {
+            QByteArray ba = devID.toLocal8Bit();
+            bleDev[i].handle = WCHBLEOpenDevice(ba.data(), devConnChangedCallback);
+            return true;
+        }
     }
-    return handle != 0;
+
+    return false;
 }
 
 bool BLE::connectDevice()
@@ -99,10 +105,36 @@ void BLE::rssiNotify()
 
 void BLE::devConnChangedCallback(void *hDev, UCHAR ConnectStatus)
 {
-    qDebug() << "handle:" << hDev << "   conn:" << ConnectStatus;
+    if(ConnectStatus == 0)
+    {
+        foreach (auto dev, bleDev)
+        {
+            if (dev.handle == hDev)
+            {
+                dev.handle = 0;
+                break;
+            }
+        }
+    }
 }
 
 void BLE::rssiCallback(PCHAR pMAC, int rssi)
 {
-    qDebug() << rssi;
+    QByteArray macByteArray(reinterpret_cast<const char*>(pMAC), 6);
+    // 将 QByteArray 转换为 QString
+    QString macAddressString = macByteArray.toHex(':').toUpper(); // 添加冒号并转为大写
+
+    foreach (auto dev, bleDev)
+    {
+        if (compareMacAddresses(macAddressString, dev.mac))
+        {
+            dev.rssi = rssi;
+            break;
+        }
+    }
+}
+
+bool BLE::compareMacAddresses(const QString &macAddress1, const QString &macAddress2)
+{
+    return macAddress1.compare(macAddress2, Qt::CaseInsensitive) == 0;
 }

@@ -2,23 +2,25 @@
 #include <QDebug>
 #include <WCHBLEDLL.h>
 #include "ble.h"
-
+#include <QTime>
 
 void BleCallback(void* hDev, UCHAR ConnectStatus)
 {
-    qDebug() << "hDev:" << hDev;
-    qDebug() << "ConnectStatus:" << ConnectStatus;
+
 }
 
 int main(int argc, char *argv[])
 {
     QCoreApplication a(argc, argv);
-    qDebug() << argv;
 
     BLE::Init();
-    BLE::scanDevice(500, NULL);
+ //   BLE::scanDevice();
 
-    BLE::connectDevice();
+    //BLE::connectDevice("BluetoothLE#BluetoothLE00:1a:7d:da:71:11-38:3b:26:93:14:58");
+    WCHBLEHANDLE h;
+    h = WCHBLEOpenDevice((PCHAR)"BluetoothLE#BluetoothLE00:1a:7d:da:71:11-38:3b:26:93:14:58", BleCallback);
+    qDebug() << h;
+    // BLE::connectDevice();
     BLE::rssiNotify();
 //    WCHBLEInit();
 //    bool bleIsOpen = WCHBLEIsBluetoothOpened();
