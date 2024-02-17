@@ -3,6 +3,7 @@
 
 #include <QObject>
 #include <QVector>
+#include <QMap>
 #include "WCHBLEDLL.h"
 
 class BLE : public QObject
@@ -22,6 +23,21 @@ public:
         WCHBLEHANDLE handle = 0;    // 设备句柄，连接上不为0
     };
 
+    struct Character
+    {
+        USHORT UUID;
+        union
+        {
+            struct
+            {
+                bool read;
+                bool write;
+                bool notify;
+            };
+            quint8 action;
+        };
+    };
+
     static void Init();
     static bool isBleOpened();
     static QString getBleVer();
@@ -33,6 +49,7 @@ public:
     bool connect(QString devID);
     void disconnect();
     bool isConnect();
+    void getUUID();
     int rssi();
     QString name();
     QString devID();
@@ -42,6 +59,7 @@ public:
 private:
     static QVector<BleDevInfo> scannedDev;  // 扫描获取到的设备
     BleDevInfo *dev;
+    QMap<USHORT, QVector<Character>> Service;
 
     static void devConnChangedCallback(void* hDev, UCHAR ConnectStatus);
     static void rssiCallback(PCHAR pMAC, int rssi);

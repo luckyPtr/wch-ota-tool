@@ -120,6 +120,11 @@ bool BLE::isConnect()
     return dev->handle != NULL;
 }
 
+void BLE::getUUID()
+{
+
+}
+
 int BLE::rssi()
 {
     return dev->rssi;
@@ -168,8 +173,6 @@ void BLE::rssiCallback(PCHAR pMAC, int rssi)
         if (compareMacAddresses(macAddressString, dev.mac))
         {
             dev.rssi = rssi;
-
-            qDebug() << macAddressString << rssi;
             break;
         }
     }
