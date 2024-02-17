@@ -4,6 +4,12 @@
 
 QVector<BLE::BleDevInfo> BLE::scannedDev;
 
+Characteristic::Characteristic(QObject *parent)
+    : QObject{parent}
+{
+
+}
+
 BLE::BLE(QObject *parent)
     : QObject{parent}
 {
@@ -98,6 +104,8 @@ bool BLE::connect(QString devID)
             if(scannedDev[i].handle)
             {
                 dev = &scannedDev[i];
+                getAllServicesUUID();
+                getAllCharacteristicUUID();
                 return true;
             }
             return false;
@@ -182,3 +190,43 @@ bool BLE::compareMacAddresses(const QString &macAddress1, const QString &macAddr
 {
     return macAddress1.compare(macAddress2, Qt::CaseInsensitive) == 0;
 }
+
+void BLE::getAllServicesUUID()
+{
+    USHORT UUIDArray[64];
+    USHORT UUIDArrayLen = 64;
+    int ret = WCHBLEGetAllServicesUUID(dev->handle, UUIDArray, &UUIDArrayLen);
+    if (ret == 0)
+    {
+        for (int i = 0; i < UUIDArrayLen; i++)
+        {
+            QVector<Characteristic*> c;
+            Service.insert(UUIDArray[i], c);
+        }
+    }
+}
+
+void BLE::getAllCharacteristicUUID()
+{
+    foreach (auto &s, Service.keys())
+    {
+        USHORT UUIDArray[64];
+        USHORT UUIDArrayLen = 64;
+        int ret = WCHBLEGetCharacteristicByUUID(dev->handle, s, UUIDArray, &UUIDArrayLen);
+        if (ret == 0)
+        {
+            for (int i = 0; i < UUIDArrayLen; i++)
+            {
+                Characteristic *c = new Characteristic;
+                c->UUID = UUIDArray[i];
+                ULONG action;
+                WCHBLEGetCharacteristicAction(dev->handle, s, c->UUID, &action);
+                c->action = action;
+                Service[s].append(c);
+                qDebug() << QString::number(s, 16) << QString::number(c->UUID, 16) << " " << QString::number(c->action, 16) << " " << c->readable << c->writable << c->notifyable;
+            }
+        }
+    }
+}
+
+
