@@ -1,13 +1,70 @@
 #include "ble.h"
+#include "qglobal.h"
 #include <QDebug>
 #include <QRegularExpression>
 
 QVector<BLE::BleDevInfo> BLE::scannedDev;
 
+
+
 Characteristic::Characteristic(QObject *parent)
     : QObject{parent}
 {
 
+}
+
+void Characteristic::write(const QByteArray &ba, bool response)
+{
+    write(ba.data(), ba.size(), response);
+}
+
+void Characteristic::write(const char *buff, char len, bool response)
+{
+    WCHBLEHANDLE handle = static_cast<BLE*>(parent())->dev->handle;
+    WCHBLEWriteCharacteristic(handle, serviceUUID, characteristicUUID, response, (PCHAR)buff, len);
+}
+
+void Characteristic::write(const char *buff, bool response)
+{
+    write(buff, std::strlen(buff), response);
+}
+
+QByteArray Characteristic::read()
+{
+    char buff[512] = {0};
+    quint16 len = read(buff);
+    QByteArray ba(buff, len);
+    return ba;
+}
+
+quint16 Characteristic::read(char *buff, quint16 maxlen)
+{
+    UINT len = maxlen;
+    WCHBLEHANDLE handle = static_cast<BLE*>(parent())->dev->handle;
+    WCHBLEReadCharacteristic(handle, serviceUUID, characteristicUUID, buff, &len);
+    return len;
+}
+
+
+bool Characteristic::enableNotify(bool enable)
+{
+    WCHBLEHANDLE handle = static_cast<BLE*>(parent())->dev->handle;
+    ParamInf paramInf;
+    paramInf.handle = handle;
+    paramInf.ServiceUUID = serviceUUID;
+    paramInf.CharacteristicUUID = characteristicUUID;
+    int ret;
+
+    if (enable)
+    {
+        ret = WCHBLERegisterReadNotify(handle, serviceUUID, characteristicUUID, BLE::readCallback, (void*)&paramInf);
+    }
+    else
+    {
+        ret = WCHBLERegisterReadNotify(handle, serviceUUID, characteristicUUID, NULL, (void*)&paramInf);
+    }
+
+    return ret == 0;
 }
 
 BLE::BLE(QObject *parent)
@@ -105,6 +162,7 @@ bool BLE::connect(QString devID)
             {
                 dev = &scannedDev[i];
                 getAllServicesUUID();
+                getMTU();
                 getAllCharacteristicUUID();
                 return true;
             }
@@ -128,10 +186,6 @@ bool BLE::isConnect()
     return dev->handle != NULL;
 }
 
-void BLE::getUUID()
-{
-
-}
 
 int BLE::rssi()
 {
@@ -153,6 +207,40 @@ QString BLE::mac()
     return dev->mac;
 }
 
+quint16 BLE::mtu()
+{
+    return MTU;
+}
+
+
+
+QMap<USHORT, QVector<USHORT> > BLE::getAllUUID()
+{
+    return UUID;
+}
+
+QVector<USHORT> BLE::getServiceUUID()
+{
+    return UUID.keys().toVector();
+}
+
+QVector<USHORT> BLE::getCharacteristicUUID(quint16 service)
+{
+    return UUID.value(service);
+}
+
+Characteristic *BLE::getCharacteristic(quint16 serviceUUID, quint16 characteraisticUUID)
+{
+    for (int i = 0; i < characteristic.size(); i++)
+    {
+        if (characteristic[i]->serviceUUID == serviceUUID && characteristic[i]->characteristicUUID == characteraisticUUID)
+        {
+            return characteristic[i];
+        }
+    }
+    return nullptr;
+}
+
 
 
 void BLE::devConnChangedCallback(void *hDev, UCHAR ConnectStatus)
@@ -167,6 +255,13 @@ void BLE::devConnChangedCallback(void *hDev, UCHAR ConnectStatus)
                 break;
             }
         }
+    }
+}
+
+void BLE::readCallback(void *raramInf, PCHAR readBuf, ULONG readBufLen)
+{
+    foreach (auto c, characteristic) {
+
     }
 }
 
@@ -200,15 +295,15 @@ void BLE::getAllServicesUUID()
     {
         for (int i = 0; i < UUIDArrayLen; i++)
         {
-            QVector<Characteristic*> c;
-            Service.insert(UUIDArray[i], c);
+            QVector<USHORT> c;
+            UUID.insert(UUIDArray[i], c);
         }
     }
 }
 
 void BLE::getAllCharacteristicUUID()
 {
-    foreach (auto &s, Service.keys())
+    foreach (auto &s, UUID.keys())
     {
         USHORT UUIDArray[64];
         USHORT UUIDArrayLen = 64;
@@ -217,16 +312,21 @@ void BLE::getAllCharacteristicUUID()
         {
             for (int i = 0; i < UUIDArrayLen; i++)
             {
-                Characteristic *c = new Characteristic;
-                c->UUID = UUIDArray[i];
-                ULONG action;
-                WCHBLEGetCharacteristicAction(dev->handle, s, c->UUID, &action);
+                Characteristic *c = new Characteristic(this);
+                c->characteristicUUID = UUIDArray[i];
+                c->serviceUUID = s;
+                ULONG action = 0;
+                WCHBLEGetCharacteristicAction(dev->handle, s, c->characteristicUUID, &action);
                 c->action = action;
-                Service[s].append(c);
-                qDebug() << QString::number(s, 16) << QString::number(c->UUID, 16) << " " << QString::number(c->action, 16) << " " << c->readable << c->writable << c->notifyable;
+                characteristic.append(c);
             }
         }
     }
+}
+
+void BLE::getMTU()
+{
+    WCHBLEGetMtu(dev->handle, &MTU);
 }
 
 

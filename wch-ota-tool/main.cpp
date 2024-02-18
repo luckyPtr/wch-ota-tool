@@ -16,6 +16,8 @@ int main(int argc, char *argv[])
 
     BLE *ble = new BLE;
     qDebug() << ble->connect();
+    Characteristic *c = ble->getCharacteristic(0xFE60, 0xFE62);
+    c->enableNotify(true);
 
     while(1)
     {
