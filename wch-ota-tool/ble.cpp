@@ -1,10 +1,10 @@
-#include "ble.h"
+﻿#include "ble.h"
 #include "qglobal.h"
 #include <QDebug>
 #include <QRegularExpression>
 
 QVector<BLE::BleDevInfo> BLE::scannedDev;
-
+QVector<Characteristic*> BLE::characteristic;
 
 
 Characteristic::Characteristic(QObject *parent)
@@ -18,15 +18,14 @@ void Characteristic::write(const QByteArray &ba, bool response)
     write(ba.data(), ba.size(), response);
 }
 
-void Characteristic::write(const char *buff, char len, bool response)
+void Characteristic::write(const char *buff, quint16 len, bool response)
 {
-    WCHBLEHANDLE handle = static_cast<BLE*>(parent())->dev->handle;
-    WCHBLEWriteCharacteristic(handle, serviceUUID, characteristicUUID, response, (PCHAR)buff, len);
+    WCHBLEWriteCharacteristic(paramInf.handle, paramInf.ServiceUUID, paramInf.CharacteristicUUID, response, (PCHAR)buff, len);
 }
 
 void Characteristic::write(const char *buff, bool response)
 {
-    write(buff, std::strlen(buff), response);
+    write(buff, (quint16)std::strlen(buff), response);
 }
 
 QByteArray Characteristic::read()
@@ -40,31 +39,37 @@ QByteArray Characteristic::read()
 quint16 Characteristic::read(char *buff, quint16 maxlen)
 {
     UINT len = maxlen;
-    WCHBLEHANDLE handle = static_cast<BLE*>(parent())->dev->handle;
-    WCHBLEReadCharacteristic(handle, serviceUUID, characteristicUUID, buff, &len);
+    WCHBLEReadCharacteristic(paramInf.handle, paramInf.ServiceUUID, paramInf.CharacteristicUUID, buff, &len);
     return len;
 }
 
 
 bool Characteristic::enableNotify(bool enable)
 {
-    WCHBLEHANDLE handle = static_cast<BLE*>(parent())->dev->handle;
-    ParamInf paramInf;
-    paramInf.handle = handle;
-    paramInf.ServiceUUID = serviceUUID;
-    paramInf.CharacteristicUUID = characteristicUUID;
+    qDebug() << paramInf.handle << " " << paramInf.ServiceUUID << " " << paramInf.CharacteristicUUID;
     int ret;
 
     if (enable)
     {
-        ret = WCHBLERegisterReadNotify(handle, serviceUUID, characteristicUUID, BLE::readCallback, (void*)&paramInf);
+        ret = WCHBLERegisterReadNotify(paramInf.handle, paramInf.ServiceUUID, paramInf.CharacteristicUUID, BLE::readCallback, (void*)&paramInf);
     }
     else
     {
-        ret = WCHBLERegisterReadNotify(handle, serviceUUID, characteristicUUID, NULL, (void*)&paramInf);
+        ret = WCHBLERegisterReadNotify(paramInf.handle, paramInf.ServiceUUID, paramInf.CharacteristicUUID, NULL, (void*)&paramInf);
     }
 
     return ret == 0;
+}
+
+quint16 Characteristic::readNotify(char *buff, quint16 maxlen)
+{
+    quint16 len = notifyRcvQue.size() < maxlen ? notifyRcvQue.size() : maxlen;
+
+    for (int i = 0; i < len; i++)
+    {
+        buff[i] = notifyRcvQue.dequeue();
+    }
+    return len;
 }
 
 BLE::BLE(QObject *parent)
@@ -233,7 +238,7 @@ Characteristic *BLE::getCharacteristic(quint16 serviceUUID, quint16 characterais
 {
     for (int i = 0; i < characteristic.size(); i++)
     {
-        if (characteristic[i]->serviceUUID == serviceUUID && characteristic[i]->characteristicUUID == characteraisticUUID)
+        if (characteristic[i]->paramInf.ServiceUUID == serviceUUID && characteristic[i]->paramInf.CharacteristicUUID == characteraisticUUID)
         {
             return characteristic[i];
         }
@@ -258,10 +263,19 @@ void BLE::devConnChangedCallback(void *hDev, UCHAR ConnectStatus)
     }
 }
 
-void BLE::readCallback(void *raramInf, PCHAR readBuf, ULONG readBufLen)
-{
+void BLE::readCallback(void *paramInf, PCHAR readBuf, ULONG readBufLen)
+{   
+    Characteristic::ParamInf p = *(Characteristic::ParamInf*)paramInf;
     foreach (auto c, characteristic) {
-
+        if (c->paramInf == p)
+        {
+            for (int i = 0; i < readBufLen; i++)
+            {
+                c->notifyRcvQue.enqueue(readBuf[i]);
+            }
+            emit c->readyRead();
+            break;
+        }
     }
 }
 
@@ -313,10 +327,11 @@ void BLE::getAllCharacteristicUUID()
             for (int i = 0; i < UUIDArrayLen; i++)
             {
                 Characteristic *c = new Characteristic(this);
-                c->characteristicUUID = UUIDArray[i];
-                c->serviceUUID = s;
+                c->paramInf.handle = dev->handle;
+                c->paramInf.CharacteristicUUID = UUIDArray[i];
+                c->paramInf.ServiceUUID = s;
                 ULONG action = 0;
-                WCHBLEGetCharacteristicAction(dev->handle, s, c->characteristicUUID, &action);
+                WCHBLEGetCharacteristicAction(dev->handle, s, c->paramInf.CharacteristicUUID, &action);
                 c->action = action;
                 characteristic.append(c);
             }

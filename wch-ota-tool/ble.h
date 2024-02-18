@@ -1,4 +1,4 @@
-#ifndef BLE_H
+﻿#ifndef BLE_H
 #define BLE_H
 
 #include <QObject>
@@ -10,20 +10,7 @@
 class Characteristic : public QObject
 {
     Q_OBJECT
-
-    struct ParamInf
-    {
-        WCHBLEHANDLE handle;
-        USHORT ServiceUUID;
-        USHORT CharacteristicUUID;
-    };
-
-    QQueue<char> notifyRcvQue;
-
 public:
-    USHORT serviceUUID;
-    USHORT characteristicUUID;
-
     union
     {
         struct
@@ -36,20 +23,33 @@ public:
         quint8 action;
     };
 
+    struct ParamInf
+    {
+        WCHBLEHANDLE handle;
+        USHORT ServiceUUID;
+        USHORT CharacteristicUUID;
+
+        bool operator==(const ParamInf &other) const {
+            return (handle == other.handle) && (ServiceUUID == other.ServiceUUID) && (CharacteristicUUID == other.CharacteristicUUID);
+        }
+    };
+
+    ParamInf paramInf;
+    QQueue<char> notifyRcvQue;
 
     explicit Characteristic(QObject *parent = nullptr);
     Characteristic(const Characteristic &other) {
-        serviceUUID = other.serviceUUID;
-        characteristicUUID = other.characteristicUUID;
+        paramInf = other.paramInf;
         action = other.action;
     }
 
     void write(const QByteArray &ba, bool response = false);
-    void write(const char *buff, char len, bool response = false);
+    void write(const char *buff, quint16 len, bool response = false);
     void write(const char *buff, bool response = false);
     QByteArray read();
     quint16 read(char *buff, quint16 maxlen = 512);
     bool enableNotify(bool enable);
+    quint16 readNotify(char *buff, quint16 maxlen = 512);
  signals:
     void readyRead();
 
@@ -75,13 +75,13 @@ public:
 
 private:
     static QVector<BleDevInfo> scannedDev;  // 扫描获取到的设备
+    static QVector<Characteristic*> characteristic; // 连接设备的特征
     BleDevInfo *dev;
     QMap<USHORT, QVector<USHORT>> UUID;
-    QVector<Characteristic*> characteristic;
     quint16 MTU = 0;
 
     static void devConnChangedCallback(void* hDev, UCHAR ConnectStatus);
-    static void readCallback(void *raramInf, PCHAR readBuf, ULONG readBufLen);
+    static void readCallback(void *paramInf, PCHAR readBuf, ULONG readBufLen);
     static void rssiCallback(PCHAR pMAC, int rssi);
     static bool compareMacAddresses(const QString& macAddress1, const QString& macAddress2);
 

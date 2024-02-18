@@ -1,4 +1,4 @@
-#include <QCoreApplication>
+﻿#include <QCoreApplication>
 #include <QDebug>
 #include <WCHBLEDLL.h>
 #include "ble.h"
@@ -16,8 +16,14 @@ int main(int argc, char *argv[])
 
     BLE *ble = new BLE;
     qDebug() << ble->connect();
-    Characteristic *c = ble->getCharacteristic(0xFE60, 0xFE62);
-    c->enableNotify(true);
+    Characteristic *cNotify = ble->getCharacteristic(0xFFF0, 0xFFF1);
+    Characteristic *cWrite = ble->getCharacteristic(0xFFF0, 0xFFF2);
+    QObject::connect(cNotify, &Characteristic::readyRead, [&](){
+        char ss[513] = {0};cNotify->readNotify(ss);
+        qDebug() << "readyRead" << ss;
+    });
+    cNotify->enableNotify(true);
+    cWrite->write("Hello");
 
     while(1)
     {

@@ -1,4 +1,4 @@
-#ifndef WCHBLEDLL_H
+﻿#ifndef WCHBLEDLL_H
 #define WCHBLEDLL_H
 #include <Windows.h>
 
@@ -13,7 +13,7 @@ struct BLENameDevID
 {
     UCHAR Name[MAX_PATH];
     UCHAR DevID[MAX_PATH];
-    int  Rssi;
+    int Rssi;
 };
 void WINAPI WCHBLEInit();
 BOOL WINAPI WCHBLEIsBluetoothOpened();
@@ -40,3 +40,4 @@ UCHAR WINAPI WCHBLEGetMtu(WCHBLEHANDLE pDev, PUSHORT pMTU);
 #endif
 
 #endif // WCHBLEDLL_H
+
