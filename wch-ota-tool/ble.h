@@ -48,6 +48,7 @@ public:
     void write(const char *buff, bool response = false);
     QByteArray read();
     quint16 read(char *buff, quint16 maxlen = 512);
+    QByteArray writeAndRead(QByteArray &ba, quint16 timeout = 1000, bool response = false);
     bool enableNotify(bool enable);
     quint16 readNotify(char *buff, quint16 maxlen = 512);
  signals:
@@ -73,8 +74,9 @@ public:
         WCHBLEHANDLE handle = 0;    // 设备句柄，连接上不为0
     };
 
+    static QVector<BleDevInfo> devices;  // 扫描获取到的设备
 private:
-    static QVector<BleDevInfo> scannedDev;  // 扫描获取到的设备
+
     static QVector<Characteristic*> characteristic; // 连接设备的特征
     BleDevInfo *dev;
     QMap<USHORT, QVector<USHORT>> UUID;

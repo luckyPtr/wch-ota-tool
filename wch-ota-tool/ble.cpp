@@ -2,8 +2,9 @@
 #include "qglobal.h"
 #include <QDebug>
 #include <QRegularExpression>
+#include <QThread>
 
-QVector<BLE::BleDevInfo> BLE::scannedDev;
+QVector<BLE::BleDevInfo> BLE::devices;
 QVector<Characteristic*> BLE::characteristic;
 
 
@@ -41,6 +42,23 @@ quint16 Characteristic::read(char *buff, quint16 maxlen)
     UINT len = maxlen;
     WCHBLEReadCharacteristic(paramInf.handle, paramInf.ServiceUUID, paramInf.CharacteristicUUID, buff, &len);
     return len;
+}
+
+QByteArray Characteristic::writeAndRead(QByteArray &ba, quint16 timeout, bool response)
+{
+    const int interval = 20;
+    write(ba, response);
+    QByteArray readBa;
+    for (int i = 0; i < timeout / interval; i++)
+    {
+        readBa = read();
+        if (!readBa.isEmpty())
+        {
+            break;
+        }
+        QThread::msleep(interval);
+    }
+    return readBa;
 }
 
 
@@ -113,7 +131,7 @@ void BLE::scanDevice(int scanTime, QString filter)
     strcpy_s(pChar, filter.length() + 1, filter.toLocal8Bit().data());
     memset(devArray, 0, sizeof(devArray));
     WCHBLEEnumDevice(scanTime, pChar, devArray, &devNum);
-    scannedDev.clear();
+    devices.clear();
     for(ULONG i = 0; i < devNum; i++)
     {
         BleDevInfo dev;
@@ -125,11 +143,7 @@ void BLE::scanDevice(int scanTime, QString filter)
         if (match.hasMatch()) {
             dev.mac = match.captured(1);
         }
-        scannedDev << dev;
-    }
-    foreach(auto dev, scannedDev)
-    {
-        qDebug() << QString("%1 %2 %3dB").arg(dev.name).arg(dev.devID).arg(dev.rssi);
+        devices << dev;
     }
 }
 
@@ -141,7 +155,7 @@ void BLE::rssiNotify()
 
 bool BLE::connect()
 {
-    if(scannedDev.empty())
+    if(devices.empty())
     {
         return false;
     }
@@ -150,22 +164,22 @@ bool BLE::connect()
     auto compare = [=](BleDevInfo &a, BleDevInfo &b) -> bool {
         return a.rssi < b.rssi;
     };
-    BleDevInfo *maxRssiDev = std::max_element(scannedDev.begin(), scannedDev.end(), compare);
+    BleDevInfo *maxRssiDev = std::max_element(devices.begin(), devices.end(), compare);
 
     return connect(maxRssiDev->devID);
 }
 
 bool BLE::connect(QString devID)
 {
-    for(int i = 0; i < scannedDev.size(); i++)
+    for(int i = 0; i < devices.size(); i++)
     {
-        if (devID.compare(scannedDev[i].devID) == 0)
+        if (devID.compare(devices[i].devID) == 0)
         {
             QByteArray ba = devID.toLocal8Bit();
-            scannedDev[i].handle = WCHBLEOpenDevice(ba.data(), devConnChangedCallback);
-            if(scannedDev[i].handle)
+            devices[i].handle = WCHBLEOpenDevice(ba.data(), devConnChangedCallback);
+            if(devices[i].handle)
             {
-                dev = &scannedDev[i];
+                dev = &devices[i];
                 getAllServicesUUID();
                 getMTU();
                 getAllCharacteristicUUID();
@@ -252,7 +266,7 @@ void BLE::devConnChangedCallback(void *hDev, UCHAR ConnectStatus)
 {
     if(ConnectStatus == 0)
     {
-        foreach (auto dev, scannedDev)
+        foreach (auto dev, devices)
         {
             if (dev.handle == hDev)
             {
@@ -264,7 +278,8 @@ void BLE::devConnChangedCallback(void *hDev, UCHAR ConnectStatus)
 }
 
 void BLE::readCallback(void *paramInf, PCHAR readBuf, ULONG readBufLen)
-{   
+{
+    qDebug() << "notify Callback";
     Characteristic::ParamInf p = *(Characteristic::ParamInf*)paramInf;
     foreach (auto c, characteristic) {
         if (c->paramInf == p)
@@ -285,7 +300,7 @@ void BLE::rssiCallback(PCHAR pMAC, int rssi)
     // 将 QByteArray 转换为 QString
     QString macAddressString = macByteArray.toHex(':').toUpper(); // 添加冒号并转为大写
 
-    foreach (auto dev, scannedDev)
+    foreach (auto dev, devices)
     {
         if (compareMacAddresses(macAddressString, dev.mac))
         {
