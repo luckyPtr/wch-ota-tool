@@ -5,9 +5,12 @@
 #include <QCommandLineParser>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QFileInfo>
 #include <QDebug>
 #include "ble.h"
 #include "ota.h"
+#include <iostream>
+#include <QThread>
 
 int AppTask::StringToInt(QString str)
 {
@@ -27,6 +30,31 @@ int AppTask::StringToInt(QString str)
     }
 
     return 0;
+}
+
+void AppTask::printDevices()
+{
+    if (BLE::devices.size() == 0)
+    {
+        qDebug() << "No BLE Device Found";
+    }
+    else
+    {
+        qDebug() << qUtf8Printable(QString("Found %1 BLE device(s):").arg(BLE::devices.size()));
+        int maxNameLen = 0;
+        foreach (auto dev, BLE::devices)
+        {
+            if (dev.name.size() > maxNameLen)
+                maxNameLen = dev.name.size();
+        }
+
+        foreach (auto dev, BLE::devices)
+        {
+            QString space(maxNameLen - dev.name.size(), ' ');
+            qDebug() << qUtf8Printable(QString("  %1%2   %3  %4dBm").arg(dev.name).arg(space).arg(dev.mac).arg(dev.rssi));
+        }
+    }
+    qDebug().noquote() << "";
 }
 
 AppTask::AppTask(QObject *parent)
@@ -95,22 +123,41 @@ void AppTask::run()
     BLE *ble = new BLE;
     Characteristic *characteristicOTA;
     OTA ota;
+    QByteArray image;
     BLE::Init();
+
+    qDebug() << "-------------------------------------";
+    qDebug() << "         WCH_OTA_Tool v1.0.0         ";
+    qDebug() << "-------------------------------------";
+
+    if (parser.isSet(opDownload))
+    {
+        QFile imgFile(parser.value(opDownload));
+        qDebug() << "Opening and parsing file:" << imgFile.fileName();
+        if (imgFile.open(QIODevice::ReadOnly))
+        {
+            image = imgFile.readAll();//读取二进制数据
+            imgFile.close();//关闭文件
+
+            qDebug() << qUtf8Printable(QString("  File   : %1").arg(QFileInfo(imgFile).fileName()));
+            qDebug() << qUtf8Printable(QString("  Size   : %1 KB").arg(QString::number((qreal)image.size() / 1024, 'f', 2)));
+            qDebug() << qUtf8Printable(QString("  Adress : 0x%1").arg(QString::number(StringToInt(parser.value(opAddr)), 16).toUpper()));
+        }
+        else
+        {
+            qDebug() << "Open file failed";
+            goto failure;
+        }
+        qDebug().noquote() << "";
+    }
+
     if (parser.isSet(opScan))
     {
-        qDebug() << "-------------------------------------";
-        qDebug() << "         WCH_OTA_Tool v1.0.0         ";
-        qDebug() << "-------------------------------------";
-        qDebug() << "Scanning...";
+        qDebug() << "Scanning BLE devices...";
         int timeout = parser.value(opTimeout).toInt();
         QString fliter = parser.value(opFliter);
         BLE::scanDevice(timeout, fliter);
-
-        qDebug() << qUtf8Printable(QString("Found %1 BLE devices!").arg(BLE::devices.size()));
-        foreach (auto dev, BLE::devices)
-        {
-            qDebug() << qUtf8Printable(QString("%1  %2  %3").arg(dev.name).arg(dev.mac).arg(dev.rssi));
-        }
+        printDevices();
 
         if (BLE::devices.size() == 0)
         {
@@ -122,13 +169,13 @@ void AppTask::run()
         qDebug() << "Connecting...";
         if (ble->connect())
         {
-            qDebug() << "Connect successfully!";
+            qDebug() << "Connect successfully\n";
             characteristicOTA = ble->getCharacteristic(0xFEE0, 0xFEE1);
             ota.setCharacteristic(characteristicOTA);
         }
         else
         {
-            qDebug() << "Connect failed!";
+            qDebug() << "Connect failed\n";
             goto failure;
         }
     }
@@ -142,10 +189,11 @@ void AppTask::run()
             qDebug() << "Erasing...";
             if(ota.erase(startAddr, size) == 0)
             {
-                qDebug() << "Erase finished!";
+                qDebug() << "Erase successfully\n";
             }
             else
             {
+                qDebug() << "Erase failed\n";
                 goto failure;
             }
         }
@@ -156,38 +204,27 @@ void AppTask::run()
     }
     if (parser.isSet(opDownload))
     {
-        QObject::connect(&ota, &OTA::downloadProgressChange, [=](quint8 percent){
-            qDebug() << qUtf8Printable(QString::asprintf("Downloading...%3d%", percent));
+        QObject::connect(&ota, &OTA::downloadProgressChange, [&](quint8 percent){
+            qDebug() << qUtf8Printable(QString::asprintf("  Downloading...%3d%", percent));
             if (percent == 100)
             {
-                qDebug() << "Download successfully!";
+                qDebug() << "File download complete\n";
             }
         });
 
-        QFile imgFile(parser.value(opDownload));
-        if (imgFile.open(QIODevice::ReadOnly))
-        {
-            QByteArray image = imgFile.readAll();//读取二进制数据
-            qDebug() << qUtf8Printable(QString("Read file:%1    Size:0x%2").arg(imgFile.fileName()).arg(QString::number(image.size(), 16).toUpper()));
-            imgFile.close();//关闭文件
-            qDebug() << "Start program...";
-            bool quick = parser.isSet(opQuick);
-            ota.program(StringToInt(parser.value(opAddr)), image, quick);
-        }
-        else
-        {
-            goto failure;
-        }
+        qDebug() << "Download in Progress:";
+        bool quick = parser.isSet(opQuick);
+        ota.program(StringToInt(parser.value(opAddr)), image, quick);
     }
 
     if (parser.isSet(opRun))
     {
-        qDebug() << "Application running...";
+        qDebug() << "Application is running...\n";
         ota.run();
     }
 
 failure:
-    qDebug() << "Exit.";
+    qDebug() << "Exit\n";
 }
 
 void AppTask::quit()

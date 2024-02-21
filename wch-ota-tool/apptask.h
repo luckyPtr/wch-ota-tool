@@ -13,6 +13,7 @@ class AppTask : public QObject
 
     QTimer timer;
     int StringToInt(QString str);
+    void printDevices();
 public:
     explicit AppTask(QObject *parent = nullptr);
 
