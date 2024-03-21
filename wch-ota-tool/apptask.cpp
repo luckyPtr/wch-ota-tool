@@ -26,7 +26,7 @@ int AppTask::StringToInt(QString str)
     }
     else if (matchDec.hasMatch())
     {
-        return matchHex.captured(1).toInt(nullptr, 10);
+        return matchDec.captured(0).toInt(nullptr, 10);
     }
 
     return 0;
@@ -72,52 +72,49 @@ void AppTask::run()
     parser.addVersionOption();
 
     // 扫描附近的设备
-    QCommandLineOption opScan("s");
+    QCommandLineOption opScan("s", "Scan nearby BLE devices.");
     parser.addOption(opScan);
 
     // 扫描的过滤选项
-    QCommandLineOption opFliter("fliter");
-    opFliter.setValueName("Fliter");
-    opFliter.setDefaultValue(NULL);
-    parser.addOption(opFliter);
+    QCommandLineOption opFilter("filter", "Filter scanned BLE devices.");
+    opFilter.setValueName("Filter");
+    opFilter.setDefaultValue(NULL);
+    parser.addOption(opFilter);
 
     // 扫描时间
-    QCommandLineOption opTimeout("timeout");
+    QCommandLineOption opTimeout("timeout", "Connection timeout.");
     opTimeout.setValueName("Timeout");
     opTimeout.setDefaultValue("1000");
     parser.addOption(opTimeout);
 
     // 连接设备
-    QCommandLineOption opConn("c");
+    QCommandLineOption opConn("c", "Establish connection to the device.");
     parser.addOption(opConn);
 
     // 擦除
-    QCommandLineOption opErase("e");
+    QCommandLineOption opErase("e", "Erase the specified sectors identified by sectors codes. ex: -e 0,4 to erase sectors 0 to 4.");
     opErase.setValueName("Erase");
     parser.addOption(opErase);
 
     // 烧录
-    QCommandLineOption opDownload("d");
-    opDownload.setValueName("File");
+    QCommandLineOption opDownload("d", "Download the content of a file into device memory.");
+    opDownload.setValueName("FilePath");
     parser.addOption(opDownload);
 
     // 烧录地址
-    QCommandLineOption opAddr("addr");
-    opAddr.setValueName("Addr");
+    QCommandLineOption opAddr("addr", "Start address of download.");
+    opAddr.setValueName("Address");
     opAddr.setDefaultValue("0x0000");
     parser.addOption(opAddr);
 
     // 校验
-    QCommandLineOption opVerify("verify");
+    QCommandLineOption opVerify("verify", "Verify if the programming operation is achieved successfully.");
     parser.addOption(opVerify);
 
     // 运行
-    QCommandLineOption opRun("r");
+    QCommandLineOption opRun("r", "Run the code.");
     parser.addOption(opRun);
 
-    // 快速烧录
-    QCommandLineOption opQuick("q");
-    parser.addOption(opQuick);
 
     parser.process(*qApp);
     BLE *ble = new BLE;
@@ -155,8 +152,8 @@ void AppTask::run()
     {
         qDebug() << "Scanning BLE devices...";
         int timeout = parser.value(opTimeout).toInt();
-        QString fliter = parser.value(opFliter);
-        BLE::scanDevice(timeout, fliter);
+        QString filter = parser.value(opFilter);
+        BLE::scanDevice(timeout, filter);
         printDevices();
 
         if (BLE::devices.size() == 0)
@@ -182,11 +179,17 @@ void AppTask::run()
     if (parser.isSet(opErase))
     {
         QStringList parts = parser.value(opErase).split(',');
-        if (parts.size() == 2)
+        if (parts.size() == 2 || parts.size() == 1)
         {
             quint32 startAddr = StringToInt(parts.at(0));
-            quint32 size = StringToInt(parts.at(1));
-            qDebug() << "Erasing...";
+            quint32 size = (image.size() + 4095) / 4096;
+            qDebug() << "Size:" << size;
+            if (parts.size() == 2)  // 如果指定了擦除范围
+            {
+                size = StringToInt(parts.at(1)) - startAddr;
+            }
+
+            qDebug() << qUtf8Printable(QString("Erasing sector [%1 %2]").arg(startAddr).arg(size));
             if(ota.erase(startAddr, size) == 0)
             {
                 qDebug() << "Erase successfully\n";
@@ -213,8 +216,7 @@ void AppTask::run()
         });
 
         qDebug() << "Download in Progress:";
-        bool quick = parser.isSet(opQuick);
-        ota.program(StringToInt(parser.value(opAddr)), image, quick);
+        ota.program(StringToInt(parser.value(opAddr)), image);
     }
 
     if (parser.isSet(opRun))

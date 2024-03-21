@@ -14,16 +14,17 @@ void OTA::setCharacteristic(Characteristic *c)
     charOTA = c;
 }
 
-
 int OTA::erase(quint32 addr, quint32 size)
 {
     QByteArray ba;
     ba.append((quint8)CMD_OTA_ERASE);
     ba.append(0x04);
+    addr *= 4096;
     ba.append((quint8)(addr / 16));
     ba.append((quint8)(addr / 16 >> 8));
-    ba.append((quint8)(size / 4096));
-    ba.append((quint8)((size / 4096) >> 8));
+    ba.append((quint8)size);
+    ba.append((quint8)(size >> 8));
+    qDebug() << ba.toHex();
     QByteArray ret = charOTA->writeAndRead(ba);
     if (ret.at(0) == 0)
     {
@@ -31,6 +32,24 @@ int OTA::erase(quint32 addr, quint32 size)
     }
     return ERR;
 }
+
+//int OTA::erase(quint32 addr, quint32 size)
+//{
+//    QByteArray ba;
+//    ba.append((quint8)CMD_OTA_ERASE);
+//    ba.append(0x04);
+//    ba.append((quint8)(addr / 16));
+//    ba.append((quint8)(addr / 16 >> 8));
+//    ba.append((quint8)(size / 4096));
+//    ba.append((quint8)((size / 4096) >> 8));
+//    qDebug() << ba.toHex();
+//    QByteArray ret = charOTA->writeAndRead(ba);
+//    if (ret.at(0) == 0)
+//    {
+//        return OK;
+//    }
+//    return ERR;
+//}
 
 int OTA::program(quint32 startAddr, QByteArray file, bool quick)
 {
