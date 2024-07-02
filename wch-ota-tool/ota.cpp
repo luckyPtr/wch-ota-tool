@@ -24,7 +24,6 @@ int OTA::erase(quint32 addr, quint32 size)
     ba.append((quint8)(addr / 16 >> 8));
     ba.append((quint8)size);
     ba.append((quint8)(size >> 8));
-    qDebug() << ba.toHex();
     QByteArray ret = charOTA->writeAndRead(ba);
     if (ret.at(0) == 0)
     {
@@ -73,12 +72,12 @@ int OTA::program(quint32 startAddr, QByteArray file, bool quick)
         ba.append((quint8)((startAddr + index) / 16 >> 8));
         ba.append(file.mid(index, size));
 
-        //QByteArray ret =
-            charOTA->write(ba, !quick);
- //       if (ret.at(0) == 0)
-        {
+//        QByteArray ret = charOTA->writeAndRead(ba);
+        charOTA->write(ba, !quick);
+//        if (ret.at(0) == 0)
+//        {
             index += size;
-        }
+//        }
 //        else
 //        {
 //            return ERR;

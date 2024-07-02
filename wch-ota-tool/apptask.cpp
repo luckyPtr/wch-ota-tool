@@ -67,9 +67,13 @@ AppTask::AppTask(QObject *parent)
 
 void AppTask::run()
 {
+    QElapsedTimer elapsedTimer;
+
     QCommandLineParser parser;
     parser.addHelpOption();
     parser.addVersionOption();
+
+    elapsedTimer.start();
 
     // 扫描附近的设备
     QCommandLineOption opScan("s", "Scan nearby BLE devices.");
@@ -183,13 +187,12 @@ void AppTask::run()
         {
             quint32 startAddr = StringToInt(parts.at(0));
             quint32 size = (image.size() + 4095) / 4096;
-            qDebug() << "Size:" << size;
             if (parts.size() == 2)  // 如果指定了擦除范围
             {
                 size = StringToInt(parts.at(1)) - startAddr;
             }
 
-            qDebug() << qUtf8Printable(QString("Erasing sector [%1 %2]").arg(startAddr).arg(size));
+            qDebug() << qUtf8Printable(QString("Erasing sectors [%1,%2]").arg(startAddr).arg(startAddr + size));
             if(ota.erase(startAddr, size) == 0)
             {
                 qDebug() << "Erase successfully\n";
@@ -216,7 +219,31 @@ void AppTask::run()
         });
 
         qDebug() << "Download in Progress:";
-        ota.program(StringToInt(parser.value(opAddr)), image);
+        int ret = ota.program(StringToInt(parser.value(opAddr)), image);
+        if (ret == OTA::ERR)
+        {
+            qDebug() << "Download failed";
+            goto failure;
+        }
+    }
+
+    if (parser.isSet(opVerify))
+    {
+        QObject::connect(&ota, &OTA::verifyProgressChange, [&](quint8 percent){
+            qDebug() << qUtf8Printable(QString::asprintf("  Verifying...%3d%", percent));
+            if (percent == 100)
+            {
+                qDebug() << "File verify complete\n";
+            }
+        });
+
+        qDebug() << "Verify in Progress:";
+        int ret = ota.verify(StringToInt(parser.value(opAddr)), image);
+        if (ret == OTA::ERR)
+        {
+            qDebug() << "Verify failed";
+            goto failure;
+        }
     }
 
     if (parser.isSet(opRun))
@@ -226,6 +253,7 @@ void AppTask::run()
     }
 
 failure:
+    qDebug() << qUtf8Printable(QString::asprintf("Time elasped %d ms", elapsedTimer.elapsed()));
     qDebug() << "Exit\n";
 }
 
